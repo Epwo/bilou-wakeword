@@ -21,15 +21,31 @@ from .model import WakeWordModel, export_onnx, N_FRAMES, EMB_DIM
 def _load_negative_features(path: str | Path, max_windows: int) -> np.ndarray:
     """Charge les features négatives pré-calculées (.npy d'openWakeWord).
 
-    Le fichier est de forme (n_windows, 16, 96). On en échantillonne
-    `max_windows` au hasard pour équilibrer avec les positifs.
+    Gère plusieurs formats possibles :
+      - (n, 16, 96)        → fenêtres prêtes, utilisées directement
+      - (n, 1536)          → aplati → reshape en (n, 16, 96)
+      - (total_frames, 96) → flux de frames → découpé en fenêtres de 16
+    On échantillonne `max_windows` fenêtres au hasard.
     """
     neg = np.load(path, mmap_mode="r")
-    if neg.ndim == 2:  # (n, 1536) aplati → reshape
-        neg = neg.reshape(-1, N_FRAMES, EMB_DIM)
-    n = min(max_windows, len(neg))
-    idx = np.random.choice(len(neg), n, replace=False)
-    return np.asarray(neg[idx], dtype=np.float32)
+
+    if neg.ndim == 3 and neg.shape[1:] == (N_FRAMES, EMB_DIM):
+        windows = neg
+    elif neg.ndim == 2 and neg.shape[1] == N_FRAMES * EMB_DIM:
+        windows = neg.reshape(-1, N_FRAMES, EMB_DIM)
+    elif neg.ndim == 2 and neg.shape[1] == EMB_DIM:
+        # flux (total_frames, 96) → fenêtres non chevauchantes de 16 frames
+        n_full = neg.shape[0] // N_FRAMES
+        windows = np.asarray(neg[:n_full * N_FRAMES]).reshape(-1, N_FRAMES, EMB_DIM)
+    else:
+        raise ValueError(
+            f"Format de features négatives inattendu : {neg.shape}. "
+            f"Attendu (n,16,96), (n,1536) ou (frames,96)."
+        )
+
+    n = min(max_windows, len(windows))
+    idx = np.random.choice(len(windows), n, replace=False)
+    return np.asarray(windows[idx], dtype=np.float32)
 
 
 def train(
