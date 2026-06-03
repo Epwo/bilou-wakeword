@@ -1,0 +1,19 @@
+# Pipeline d'entraînement wake word — dépendances SAINES uniquement.
+# Aucune version épinglée : on laisse l'environnement (Colab/local) choisir
+# un ensemble cohérent. Pas de torchmetrics / speechbrain / torch-audiomentations
+# / tensorflow — c'étaient les coupables des conflits du notebook original.
+
+# Génération de samples (nouvelle API, package moderne)
+piper-sample-generator
+
+# Extraction de features (modèles ONNX melspec + embedding)
+openwakeword
+
+# Inférence ONNX (features) + entraînement (petit classifieur)
+onnxruntime
+torch
+
+# Audio I/O + maths
+numpy
+soundfile
+scipy
