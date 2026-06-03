@@ -71,11 +71,28 @@ def export_onnx(model: WakeWordModel, path: str,
     model.eval()
     wrapper = _ExportWrapper(model).eval()
     dummy = torch.randn(1, *input_shape)
-    torch.onnx.export(
-        wrapper, dummy, path,
-        input_names=["onnx____Flatten_0"],   # nom attendu par openWakeWord
-        output_names=["output"],
-        dynamic_axes={"onnx____Flatten_0": {0: "batch"}, "output": {0: "batch"}},
-        opset_version=14,
-    )
+
+    def _do_export():
+        torch.onnx.export(
+            wrapper, dummy, path,
+            input_names=["onnx____Flatten_0"],   # nom attendu par openWakeWord
+            output_names=["output"],
+            dynamic_axes={"onnx____Flatten_0": {0: "batch"}, "output": {0: "batch"}},
+            opset_version=14,
+        )
+
+    try:
+        _do_export()
+    except ModuleNotFoundError as e:
+        # torch.onnx récent tire `onnxscript`. S'il manque, on l'installe à la
+        # volée et on réessaie — évite de relancer toute la pipeline.
+        if "onnxscript" in str(e):
+            import subprocess
+            import sys
+            print("[export] onnxscript manquant, installation...")
+            subprocess.run([sys.executable, "-m", "pip", "install", "-q",
+                            "onnxscript"], check=True)
+            _do_export()
+        else:
+            raise
     print(f"[export] modèle ONNX écrit → {path}")

@@ -19,3 +19,6 @@ torch
 numpy
 soundfile
 scipy
+
+# Export ONNX (torch.onnx récent en a besoin)
+onnxscript
