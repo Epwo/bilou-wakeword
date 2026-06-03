@@ -67,32 +67,25 @@ class _ExportWrapper(nn.Module):
 
 def export_onnx(model: WakeWordModel, path: str,
                 input_shape=(N_FRAMES, EMB_DIM)) -> None:
-    """Exporte le modèle (avec sigmoid) en ONNX, format openWakeWord."""
+    """Exporte le modèle (avec sigmoid) en ONNX, format openWakeWord.
+
+    On force l'ANCIEN exporter TorchScript (`dynamo=False`) : il est stable
+    pour ce petit réseau FC, et n'a pas besoin d'onnxscript. Le nouveau
+    backend dynamo (défaut des torch récents) plante sur ce modèle sur Colab.
+    """
     model.eval()
     wrapper = _ExportWrapper(model).eval()
     dummy = torch.randn(1, *input_shape)
-
-    def _do_export():
-        torch.onnx.export(
-            wrapper, dummy, path,
-            input_names=["onnx____Flatten_0"],   # nom attendu par openWakeWord
-            output_names=["output"],
-            dynamic_axes={"onnx____Flatten_0": {0: "batch"}, "output": {0: "batch"}},
-            opset_version=14,
-        )
-
+    kwargs = dict(
+        input_names=["onnx____Flatten_0"],      # nom attendu par openWakeWord
+        output_names=["output"],
+        dynamic_axes={"onnx____Flatten_0": {0: "batch"}, "output": {0: "batch"}},
+        opset_version=14,
+    )
     try:
-        _do_export()
-    except ModuleNotFoundError as e:
-        # torch.onnx récent tire `onnxscript`. S'il manque, on l'installe à la
-        # volée et on réessaie — évite de relancer toute la pipeline.
-        if "onnxscript" in str(e):
-            import subprocess
-            import sys
-            print("[export] onnxscript manquant, installation...")
-            subprocess.run([sys.executable, "-m", "pip", "install", "-q",
-                            "onnxscript"], check=True)
-            _do_export()
-        else:
-            raise
+        torch.onnx.export(wrapper, dummy, path, dynamo=False, **kwargs)
+    except TypeError:
+        # Version de torch sans le paramètre `dynamo` → l'ancien exporter est
+        # déjà le défaut.
+        torch.onnx.export(wrapper, dummy, path, **kwargs)
     print(f"[export] modèle ONNX écrit → {path}")

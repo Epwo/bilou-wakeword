@@ -116,5 +116,11 @@ def train(
               f"val_acc={acc:.3f}  recall={recall:.3f}  fp={fp:.3f}")
 
     Path(out_onnx).parent.mkdir(parents=True, exist_ok=True)
+    # Filet : sauve les poids AVANT l'export ONNX. Si l'export échoue, on peut
+    # ré-exporter sans relancer génération + entraînement.
+    ckpt = Path(out_onnx).with_suffix(".pt")
+    torch.save(model.state_dict(), ckpt)
+    print(f"[train] poids sauvés → {ckpt}")
+
     export_onnx(model, str(out_onnx))
     return {"val_acc": acc, "recall": recall, "fp_rate": fp}
