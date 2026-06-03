@@ -58,18 +58,29 @@ def generate_positive_samples(
     if not voice_onnx.exists():
         raise FileNotFoundError(f"Voix introuvable : {voice_onnx}")
 
+    # piper répartit les samples sur les length_scales ; il faut au moins
+    # autant de samples que de scales, sinon certaines configs sont vides.
+    scales = list(length_scales)
+    if n_samples < len(scales):
+        scales = scales[:max(1, n_samples)]
+
     cmd = [
         sys.executable, "-m", "piper_sample_generator",
         word,
         "--model", str(voice_onnx),
         "--max-samples", str(n_samples),
         "--output-dir", str(out_dir),
-        "--length-scales", *[str(x) for x in length_scales],
+        "--length-scales", *[str(x) for x in scales],
     ]
     print(f"[generate] {n_samples} échantillons de « {word} » → {out_dir}")
     print("  (cwd=%s) %s" % (piper_root, " ".join(cmd)))
-    # cwd = racine du repo → piper_train importable
-    subprocess.run(cmd, check=True, cwd=str(piper_root))
+    # cwd = racine du repo → piper_train importable. On capture la sortie pour
+    # afficher le vrai message d'erreur de piper (sinon masqué par subprocess).
+    proc = subprocess.run(cmd, cwd=str(piper_root), capture_output=True, text=True)
+    if proc.returncode != 0:
+        print("=== STDOUT piper ===\n" + (proc.stdout or "")[-2000:])
+        print("=== STDERR piper ===\n" + (proc.stderr or "")[-4000:])
+        raise RuntimeError(f"piper a échoué (exit {proc.returncode}) — voir stderr ci-dessus")
 
     wavs = list(out_dir.glob("*.wav"))
     print(f"[generate] {len(wavs)} fichiers WAV produits.")
