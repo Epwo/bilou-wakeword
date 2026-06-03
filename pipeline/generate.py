@@ -31,12 +31,17 @@ def ensure_piper(clone_dir: str | Path = "piper-sample-generator") -> Path:
         print(f"[generate] clone de {PIPER_REPO}")
         subprocess.run(["git", "clone", "--depth", "1", PIPER_REPO, str(clone_dir)],
                        check=True)
-        # piper-phonemize-cross = fork avec wheels py3.12 (la phonémisation
-        # texte→phonèmes pour les voix .onnx). Le pip officiel piper-phonemize
-        # n'a pas de wheel py3.12.
-        print("[generate] install de piper-phonemize-cross")
-        subprocess.run([sys.executable, "-m", "pip", "install", "-q",
-                        "piper-phonemize-cross"], check=True)
+        # __main__.py importe la NOUVELLE API piper-tts :
+        #   from piper import PiperVoice, SynthesisConfig
+        #   from piper.phonemize_espeak import EspeakPhonemizer
+        # → il faut le package `piper-tts` (récent) + le binaire espeak-ng.
+        print("[generate] install de piper-tts")
+        subprocess.run([sys.executable, "-m", "pip", "install", "-q", "piper-tts"],
+                       check=True)
+        # espeak-ng (binaire) pour la phonémisation. check=False : si apt
+        # n'existe pas (hors Colab/Debian), piper-tts a souvent un fallback.
+        print("[generate] install de espeak-ng (apt)")
+        subprocess.run(["apt-get", "install", "-y", "-q", "espeak-ng"], check=False)
     return clone_dir.resolve()
 
 
