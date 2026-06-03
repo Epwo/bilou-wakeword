@@ -73,9 +73,11 @@ def export_onnx(model: WakeWordModel, path: str,
     pour ce petit réseau FC, et n'a pas besoin d'onnxscript. Le nouveau
     backend dynamo (défaut des torch récents) plante sur ce modèle sur Colab.
     """
-    model.eval()
-    wrapper = _ExportWrapper(model).eval()
-    dummy = torch.randn(1, *input_shape)
+    # Exporter sur CPU : le modèle peut être sur GPU (entraîné sur cuda),
+    # mais le dummy input est sur CPU → on aligne tout sur CPU.
+    model = model.eval().cpu()
+    wrapper = _ExportWrapper(model).eval().cpu()
+    dummy = torch.randn(1, *input_shape)   # CPU
     kwargs = dict(
         input_names=["onnx____Flatten_0"],      # nom attendu par openWakeWord
         output_names=["output"],
