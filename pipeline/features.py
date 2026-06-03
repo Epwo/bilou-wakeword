@@ -37,6 +37,11 @@ class FeatureExtractor:
         `windows_per_clip` dernières fenêtres glissantes de 16 frames
         (le mot est vers la fin du clip).
         """
+        # openWakeWord exige de l'audio 16-bit PCM (int16), pas du float32.
+        if clips.dtype != np.int16:
+            clips = np.clip(clips, -1.0, 1.0)
+            clips = (clips * 32767.0).astype(np.int16)
+
         emb = self._af.embed_clips(clips, batch_size=64)  # (n, frames, 96)
         emb = np.asarray(emb, dtype=np.float32)
         if emb.ndim == 2:
