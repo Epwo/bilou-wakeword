@@ -3,8 +3,10 @@
 # un ensemble cohérent. Pas de torchmetrics / speechbrain / torch-audiomentations
 # / tensorflow — c'étaient les coupables des conflits du notebook original.
 
-# Génération de samples (nouvelle API, package moderne)
-piper-sample-generator
+# Génération de samples : le repo piper-sample-generator est CLONÉ par
+# pipeline/generate.py (le wheel PyPI est cassé — il manque piper_train).
+# La seule dép pip nécessaire est la phonémisation, installée automatiquement :
+#   piper-phonemize-cross   (fait par generate.ensure_piper)
 
 # Extraction de features (modèles ONNX melspec + embedding)
 openwakeword
