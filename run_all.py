@@ -39,6 +39,11 @@ def main():
                    help="Désactive l'augmentation bruit/réverbération.")
     p.add_argument("--noise-dir", default=None,
                    help="Dossier de WAV de bruit pour l'augmentation (optionnel).")
+    p.add_argument("--extra-positives", default=None,
+                   help="Dossier de WAV de TA voix disant le mot (record_samples.py). "
+                        "Fortement augmentés et ajoutés aux positifs synthétiques.")
+    p.add_argument("--extra-aug", type=int, default=30,
+                   help="Nombre de variantes par vrai clip (défaut 30).")
     args = p.parse_args()
 
     work = Path(args.workdir)
@@ -65,6 +70,18 @@ def main():
         aug = augment_batch(clips, noise_clips=noise, seed=1)
         clips = np.concatenate([clips, aug])  # double le dataset
         print(f"[run] dataset positif augmenté → {len(clips)} clips.")
+
+    # --- 2c. vrais enregistrements de ta voix (très efficace) -------------
+    if args.extra_positives:
+        from pipeline.augment import augment_simple
+        real = load_wavs_as_array(args.extra_positives)
+        if len(real) == 0:
+            print(f"[run] ⚠ aucun WAV dans {args.extra_positives}")
+        else:
+            real_aug = augment_simple(real, n_aug=args.extra_aug)
+            print(f"[run] {len(real)} vrais clips → {len(real_aug)} après augmentation.")
+            clips = np.concatenate([clips, real_aug])
+            print(f"[run] dataset positif total → {len(clips)} clips.")
 
     # --- 3. embeddings -----------------------------------------------------
     print("[run] calcul des embeddings (ONNX)...")

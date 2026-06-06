@@ -47,6 +47,33 @@ def apply_reverb(clip: np.ndarray, rir: np.ndarray) -> np.ndarray:
     return out.astype(np.float32)
 
 
+def augment_simple(clips: np.ndarray, n_aug: int = 20, seed: int = 0) -> np.ndarray:
+    """Multiplie un petit jeu de clips (ex. ta voix) par augmentation numpy
+    pure — sans avoir besoin de clips de bruit externes.
+
+    Pour chaque clip on génère `n_aug` variantes via : gain aléatoire,
+    décalage temporel, bruit gaussien léger. 30 clips × (1+20) = 630 exemples.
+    Permet aux vrais enregistrements de peser face aux milliers de samples
+    synthétiques.
+    """
+    rng = np.random.default_rng(seed)
+    out = [clips.astype(np.float32)]          # garde les originaux
+    for _ in range(n_aug):
+        batch = clips.copy().astype(np.float32)
+        for i in range(len(batch)):
+            c = batch[i]
+            c = c * rng.uniform(0.7, 1.3)                  # gain
+            c = np.roll(c, int(rng.integers(-800, 800)))  # ±50 ms
+            # bruit gaussien à SNR aléatoire
+            snr = rng.uniform(15.0, 30.0)
+            sig_rms = float(np.sqrt(np.mean(c ** 2) + 1e-9))
+            noise_rms = sig_rms / (10 ** (snr / 20))
+            c = c + rng.normal(0, noise_rms, len(c)).astype(np.float32)
+            batch[i] = np.clip(c, -1.0, 1.0)
+        out.append(batch)
+    return np.concatenate(out).astype(np.float32)
+
+
 def augment_batch(
     clips: np.ndarray,
     noise_clips: list[np.ndarray] | None = None,
