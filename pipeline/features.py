@@ -29,13 +29,14 @@ class FeatureExtractor:
         # exister → on appelle sans argument (les défauts utilisent ONNX).
         self._af = AudioFeatures()
 
-    def embed_clips(self, clips: np.ndarray,
-                    windows_per_clip: int = 4) -> np.ndarray:
-        """clips : (n_clips, n_samples) float32 16 kHz, tous même longueur.
+    def embed_clips(self, clips: np.ndarray) -> np.ndarray:
+        """clips : (n_clips, n_samples) float32 16 kHz, déjà centrés sur la
+        parole (≈ 2 s chacun → ≈ 16 frames d'embedding).
 
-        Retourne (M, 16, 96) : pour chaque clip, on garde les
-        `windows_per_clip` dernières fenêtres glissantes de 16 frames
-        (le mot est vers la fin du clip).
+        Retourne (M, 16, 96) : pour chaque clip, on garde TOUTES les fenêtres
+        de 16 frames disponibles (généralement 1, parfois 2-3 si le clip est
+        un peu plus long). Comme les clips sont centrés sur le mot, ces
+        fenêtres contiennent bien le mot — pas du silence.
         """
         # openWakeWord exige de l'audio 16-bit PCM (int16), pas du float32.
         if clips.dtype != np.int16:
@@ -45,23 +46,19 @@ class FeatureExtractor:
         emb = self._af.embed_clips(clips, batch_size=64)  # (n, frames, 96)
         emb = np.asarray(emb, dtype=np.float32)
         if emb.ndim == 2:
-            # certaines versions renvoient (frames, 96) pour un seul clip
             emb = emb[None]
 
         windows = []
         n, frames, dim = emb.shape
         for i in range(n):
-            e = emb[i]                       # (frames, 96)
+            e = emb[i]
             if frames < N_FRAMES:
                 pad = np.zeros((N_FRAMES - frames, dim), dtype=e.dtype)
                 e = np.concatenate([pad, e])
                 f = N_FRAMES
             else:
                 f = frames
-            # `windows_per_clip` dernières positions de fenêtre
-            last_start = f - N_FRAMES
-            first_start = max(0, last_start - windows_per_clip + 1)
-            for s in range(first_start, last_start + 1):
+            for s in range(0, f - N_FRAMES + 1):     # toutes les fenêtres
                 windows.append(e[s:s + N_FRAMES])
 
         if not windows:
@@ -69,11 +66,30 @@ class FeatureExtractor:
         return np.stack(windows).astype(np.float32)
 
 
-def load_wavs_as_array(wav_dir: str | Path, target_len: int = 48000) -> np.ndarray:
-    """Charge tous les WAV en (n, target_len) float32, 16 kHz mono.
+def extract_speech_window(audio: np.ndarray, win: int = 32000) -> np.ndarray:
+    """Extrait la fenêtre de `win` samples (≈ 2 s) la plus énergique du clip
+    = celle qui contient le mot prononcé.
 
-    target_len = 3 s à 16 kHz : assez long pour produire ≥ 16 frames
-    d'embedding (≈ 24 frames), même pour les clips lents.
+    Crucial : les clips piper ont le mot au début/milieu puis du silence.
+    Sans ce centrage, on risque d'entraîner le modèle sur du silence.
+    """
+    n = len(audio)
+    if n <= win:
+        pad = win - n
+        return np.pad(audio, (pad // 2, pad - pad // 2)).astype(np.float32)
+    # énergie de chaque fenêtre glissante via somme cumulée (rapide)
+    energy = audio.astype(np.float64) ** 2
+    cumsum = np.concatenate([[0.0], np.cumsum(energy)])
+    win_energy = cumsum[win:] - cumsum[:-win]
+    start = int(np.argmax(win_energy))
+    return audio[start:start + win].astype(np.float32)
+
+
+def load_wavs_as_array(wav_dir: str | Path, win: int = 32000) -> np.ndarray:
+    """Charge tous les WAV, centrés sur la parole, en (n, win) float32 16 kHz.
+
+    `win` = 32000 (2 s) : une fenêtre de 16 frames d'embedding couvre ~2 s,
+    donc chaque clip produit ≈ 1 fenêtre contenant le mot.
     """
     import soundfile as sf
 
@@ -83,11 +99,7 @@ def load_wavs_as_array(wav_dir: str | Path, target_len: int = 48000) -> np.ndarr
         audio, sr = sf.read(wav, dtype="float32")
         if audio.ndim == 2:
             audio = audio.mean(axis=1)
-        if len(audio) < target_len:
-            audio = np.pad(audio, (0, target_len - len(audio)))
-        else:
-            audio = audio[:target_len]
-        clips.append(audio)
+        clips.append(extract_speech_window(audio, win))
     if not clips:
-        return np.zeros((0, target_len), dtype=np.float32)
+        return np.zeros((0, win), dtype=np.float32)
     return np.stack(clips).astype(np.float32)
